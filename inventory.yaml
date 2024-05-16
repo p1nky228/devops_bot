@@ -9,7 +9,7 @@ all:
       ansible_user: root
       ansible_ssh_pass: root
       dir: /root/ansible
-      github_repo: https://github.com/p1nky228/Telegram_Bots.git
+      github_repo: https://github.com/p1nky228/devops_bot.git
       TOKEN: '6800637561:AAE9JicUQ5XmJCCRP-DxLzrm8S8OA036jyE'
       RM_HOST: 192.168.254.145
       RM_PORT: 22
