@@ -146,7 +146,7 @@
 
     - name: Install dependencies using pip in the virtual environment
       ansible.builtin.shell:
-        cmd: myenv/bin/pip install -r "{{hostvars[inventory_hostname]['dir']}}/source/ansible/requirements.txt"
+        cmd: myenv/bin/pip install -r "{{hostvars[inventory_hostname]['dir']}}/source/requirements.txt"
       environment:
         PATH: "myenv/bin:{{ ansible_env.PATH }}"
 
