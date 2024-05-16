@@ -1,0 +1,166 @@
+---
+- name: all hosts
+  hosts: all
+  become: yes
+  gather_facts: false
+
+  tasks:
+    - name: db
+      apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+          - libpq-dev
+        state: latest
+
+- name: db (host01)
+  hosts: host01
+  become: yes
+  gather_facts: false
+
+  tasks:
+    - name: install apt
+      apt:
+        name:
+          - sshpass
+        state: latest
+    - name: create db
+      become_user: postgres
+      become: yes
+      shell: |
+        psql -c "SELECT 1" -d {{ hostvars[inventory_hostname]['DB_DATABASE'] }} || psql -c "CREATE DATABASE {{ hostvars[inventory_hostname]['DB_DATABASE'] }}"
+    - name: create table
+      shell: |
+        set -e
+        psql -v ON_ERROR_STOP=1 --username "{{ hostvars[inventory_hostname]['DB_USER'] }}" --dbname "{{ hostvars[inventory_hostname]['DB_DATABASE'] }}" <<-EOSQL
+          ALTER USER "{{ hostvars[inventory_hostname]['DB_USER'] }}" WITH PASSWORD '{{ hostvars[inventory_hostname]['DB_PASSWORD'] }}';
+          DROP ROLE IF EXISTS {{ hostvars[inventory_hostname]['DB_REPL_USER'] }};
+          CREATE ROLE {{ hostvars[inventory_hostname]['DB_REPL_USER'] }} WITH REPLICATION LOGIN PASSWORD '{{ hostvars[inventory_hostname]['DB_REPL_PASSWORD'] }}';
+          CREATE TABLE IF NOT EXISTS phone_numbers (PhoneNumber_id SERIAL PRIMARY KEY, phone_number VARCHAR(18) NOT NULL);
+          CREATE TABLE IF NOT EXISTS emails (Emails_id SERIAL PRIMARY KEY, email VARCHAR(255) NOT NULL);
+        EOSQL
+      become_user: postgres
+      become: yes
+    - name: pg_hba conf
+      blockinfile:
+        path: "/etc/postgresql/{{ hostvars[inventory_hostname]['POSTGRES_VERSION'] }}/main/pg_hba.conf"
+        block: | 
+          host replication all {{ hostvars[inventory_hostname]['DB_REPL_HOST'] }}/24 scram-sha-256
+          host all all {{ hostvars[inventory_hostname]['DB_REPL_HOST'] }}/32 trust
+          host all all {{ hostvars[inventory_hostname]['DB_HOST'] }}/32 trust
+    - name: Creates directory
+      ansible.builtin.file:
+        path: /oracle/pg_data/archive
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: 0775
+        recurse: yes
+    - name: configure
+      become: yes
+      become_user: postgres
+      blockinfile:
+        path: /etc/postgresql/{{hostvars[inventory_hostname]['POSTGRES_VERSION']}}/main/postgresql.conf
+        block: |
+          wal_level = replica
+          archive_command ='cp %p /oracle/pg_data/archive/%f'
+          archive_mode = on
+          wal_log_hints = on
+          hot_standby = on
+          max_wal_senders = 10
+          max_replication_slots = 10
+          hot_standby_feedback = on
+          listen_addresses = '*'
+          logging_collector = on
+          log_directory = '/var/log/postgresql'
+          log_filename = 'postgresql.log'
+          log_truncate_on_rotation = off
+          log_rotation_age = 0
+          log_rotation_size = 0
+          log_statement = all
+          log_replication_commands = on
+          log_min_messages = debug1
+          log_min_error_statement = debug1
+        backup: yes
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        create: yes
+        owner: postgres
+        group: postgres
+        mode: 0644
+    - name: Restart PostgreSQL
+      become: yes
+      service:
+        name: postgresql
+        state: restarted
+        enabled: yes
+
+- name: db_repl (host02)
+  hosts: host02
+  become: yes
+  gather_facts: false
+
+  tasks:
+    - name: rm
+      command: rm -rf /var/lib/postgresql/"{{ hostvars[inventory_hostname]['POSTGRES_VERSION'] }}"/
+    - name: pg_basebackup
+      command: pg_basebackup -R -h {{ hostvars[inventory_hostname]['DB_HOST'] }} -U {{ hostvars[inventory_hostname]['DB_REPL_USER'] }} -D /var/lib/postgresql/{{ hostvars[inventory_hostname]['POSTGRES_VERSION'] }}/main -P
+      environment:
+        PGPASSWORD: "{{ hostvars[inventory_hostname]['DB_REPL_PASSWORD'] }}"
+    - name: chown
+      command: chown -R postgres:postgres /var/lib/postgresql/
+    - name: restart postgresql
+      service:
+        name: postgresql
+        state: restarted
+
+- name: tg_bot
+  hosts: host01
+  become: yes
+  gather_facts: false
+
+  tasks:
+    - name: Update and upgrade apt packages
+      become: true
+      apt:
+        update_cache: yes
+        upgrade: 'yes'
+    - name: apt
+      apt:
+        name:
+          - git
+          - python3
+          - python3-pip
+          - python3-venv
+        state: latest
+    - name: mkdir
+      command: mkdir -p "{{hostvars[inventory_hostname]['dir']}}/source"
+    - name: git clone
+      git:
+        repo: "{{hostvars[inventory_hostname]['github_repo']}}"
+        dest: "{{hostvars[inventory_hostname]['dir']}}/source"
+        version: ansible
+
+    - name: Create a Python virtual environment
+      ansible.builtin.command:
+        cmd: python3 -m venv myenv
+
+    - name: Install dependencies using pip in the virtual environment
+      ansible.builtin.shell:
+        cmd: myenv/bin/pip install -r "{{hostvars[inventory_hostname]['dir']}}/source/ansible/requirements.txt"
+      environment:
+        PATH: "myenv/bin:{{ ansible_env.PATH }}"
+
+    - name: start python
+      command: myenv/bin/python3 "{{ hostvars[inventory_hostname]['dir'] }}/source/ansible/bot.py" &
+      environment:
+        TOKEN       : "{{hostvars[inventory_hostname]['TOKEN'] }}"
+        RM_HOST        : "{{hostvars[inventory_hostname]['RM_HOST'] }}"
+        RM_PORT        : "{{hostvars[inventory_hostname]['RM_PORT'] }}"
+        RM_USER        : "{{hostvars[inventory_hostname]['RM_USER'] }}"
+        RM_PASSWORD    : "{{hostvars[inventory_hostname]['RM_PASSWORD'] }}"
+        DB_HOST     : "{{hostvars[inventory_hostname]['DB_HOST'] }}"
+        DB_USER     : "{{hostvars[inventory_hostname]['DB_USER'] }}"
+        DB_PASSWORD : "{{hostvars[inventory_hostname]['DB_PASSWORD'] }}"
+        DB_PORT     : "{{hostvars[inventory_hostname]['DB_PORT'] }}"
+        DB_DATABASE : "{{hostvars[inventory_hostname]['DB_DATABASE'] }}"
+      become: true
