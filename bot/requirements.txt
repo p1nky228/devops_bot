@@ -1,5 +1,0 @@
-python-telegram-bot==13.7
-pathlib
-python-dotenv
-psycopg2
-paramiko
