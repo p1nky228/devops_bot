@@ -151,7 +151,7 @@
         PATH: "myenv/bin:{{ ansible_env.PATH }}"
 
     - name: start python
-      command: myenv/bin/python3 "{{ hostvars[inventory_hostname]['dir'] }}/source/ansible/bot.py" &
+      command: myenv/bin/python3 "{{ hostvars[inventory_hostname]['dir'] }}/source/bot.py" &
       environment:
         TOKEN       : "{{hostvars[inventory_hostname]['TOKEN'] }}"
         RM_HOST        : "{{hostvars[inventory_hostname]['RM_HOST'] }}"
