@@ -17,7 +17,9 @@ services:
     env_file:
       - .env
     restart: unless-stopped
-    image: 192.168.254.140:5000/db 
+    build:
+      context: ./db
+      dockerfile: Dockerfile 
     ports:
       - "${DB_PORT}:5432"
     environment:
@@ -53,7 +55,9 @@ services:
   db_repl_image:
     env_file:
       - .env
-    image: 192.168.254.140:5000/db_repl
+    build:
+      context: ./db_repl
+      dockerfile: Dockerfile
     ports:
       - "${DB_REPL_PORT}:5432"
     environment:
@@ -82,7 +86,9 @@ services:
       "
 
   bot_image:
-    image: 192.168.254.140:5000/bot
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
     networks:
       Tg_network:
     environment:
