@@ -30,7 +30,7 @@ services:
       POSTGRES_REPLICATION_PASSWORD: ${DB_REPL_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
-
+      - ./db/init.sh:/docker-entrypoint-initdb.d/init.sh
       - pglog:/var/log/postgresql
     command: |
       postgres
